@@ -1,0 +1,94 @@
+---
+apiVersion: extensions/v1beta1
+kind: Deployment
+metadata:
+  name: phoenix
+  namespace: phoenix
+spec:
+  selector:
+    matchLabels:
+      app: phoenix
+  replicas: 2
+  strategy:
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 2
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: phoenix
+    spec:
+      containers:
+        - name: phoenix
+          image: registry1234.mooo.com/admin/kubernetes_phoenix:latest # use your own registry
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "300m"
+            limits:
+              memory: "550Mi"
+              cpu: "350m"
+          ports:
+            - containerPort: 4000
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 4000
+            initialDelaySeconds: 45
+            successThreshold: 1
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 4000
+            initialDelaySeconds: 0
+            successThreshold: 1
+            failureThreshold: 3
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: phoenix-secrets
+                  key: postgres_url
+            - name: SECRET_KEY_BASE
+              valueFrom:
+                secretKeyRef:
+                  name: phoenix-secrets
+                  key: secret_key_base
+      imagePullSecrets:
+        - name: regcred
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: phoenix-service
+  namespace: phoenix
+spec:
+  selector:
+    app: phoenix
+  ports:
+    - protocol: TCP
+      port: 4000
+      name: web
+---
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: phoenix-ingress
+  namespace: phoenix
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    certmanager.k8s.io/cluster-issuer: letsencrypt-prod
+spec:
+  tls:
+    - hosts:
+        - phoenix1234.mooo.com
+      secretName: letsencrypt-prod
+  rules:
+    - host: phoenix1234.mooo.com
+      http:
+        paths:
+          - backend:
+              serviceName: phoenix-service
+              servicePort: 4000
